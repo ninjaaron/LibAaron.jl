@@ -1,7 +1,7 @@
 module LibAaron
 export @forward, flatten
+const Opt = Union{T,Nothing} where T
 
-# forwartd
 macro forward(attribute, functions...)
     stname = attribute.args[1]
     stattr = attribute.args[2].value
@@ -59,5 +59,30 @@ end
 
 Base.iterate(f::Flatten) =
     iterate(f, Iterators.Stateful[Iterators.Stateful(f.iterable)])
+
+# I wanted a uri escape function. The one in URIParser was weird, and
+# the one in GLib is much faster anyway.
+const glib = "libglib-2.0"
+
+function uriescape(str::AbstractString, noescape::Opt{AbstractString}=nothing)
+    noesc = noescape == nothing ? C_NULL : noescape
+    cstr = ccall(
+        (:g_uri_escape_string, glib),
+        Cstring,
+        (Cstring, Cstring, Cint),
+        str, noesc, true
+    )
+    out = unsafe_string(cstr)
+    ccall(:free, Cvoid, (Cstring,), cstr)
+    out
+end
+
+# how are hard links missing from the Julia standard library?
+function hardlink(oldpath, newpath)
+    err = ccall(:link, Cint, (Cstring, Cstring), oldpath, newpath)
+    systemerror("could not link $(repr(oldpath)) to $(repr(newpath))", err != 0)
+    newpath
+end
+        
 
 end # module
