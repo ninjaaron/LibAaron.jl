@@ -12,7 +12,7 @@ const utf8_buf = zeros(UInt8, 6)
 function string_unescape(str::String, buffer::Vector{UInt8})
     bytes = Base.CodeUnits(str)
     len = length(bytes)
-    length(buffer) * 2 < len  && throw(BoundsError(buffer, length(bytes)))
+    length(buffer) < len  && throw(BoundsError(buffer, length(bytes)))
     byteidx::Int = buffidx::Int = 0
     @inbounds while (i += 1) <= bytes
         j += 1
