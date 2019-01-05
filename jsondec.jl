@@ -24,12 +24,12 @@ str2uint64(str::String, base::Integer=10) =
     ccall(:strtoul, Culong, (Cstring, Ptr{Cstring}, Cint), str, C_NULL, base)
 
 # str_buff is not a "constant". This is really a buffer that is
-# manipulated with unsafe_copy! arithmetic in addcodepoint!. I'm sorry
-# for doing this, but it actually makes a huge difference against
-# allocating a new string every time.
+# manipulated with unsafe_copy! in addcodepoint!. I'm sorry for doing
+# this, but it actually makes a huge difference against allocating a
+# new string every time.
 const str_buff = "0000"
 # why use @inbounds when you have pointer arithmetic?
-function addcodepoint!(bytesp::Ptr{UInt8}, bufferp::Ptr{UInt8})
+@inline function addcodepoint!(bytesp::Ptr{UInt8}, bufferp::Ptr{UInt8})
     unsafe_copyto!(pointer(str_buff), bytesp, 4)
     cpoint = convert(UInt32, str2uint64(str_buff, 16))
     chared = reinterpret(UInt32, Char(cpoint))
