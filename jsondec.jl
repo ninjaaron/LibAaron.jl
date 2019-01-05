@@ -33,7 +33,7 @@ const str_buff = "0000"
     unsafe_copyto!(pointer(str_buff), bytesp, 4)
     cpoint = convert(UInt32, str2uint64(str_buff, 16))
     chared = reinterpret(UInt32, Char(cpoint))
-    # the follwing is modified from substring.jl in base.
+    # the follwing is modified from string() in substring.jl in base.
     lenc = codelen(chared)
     offs = 1
     x = bswap(chared)
