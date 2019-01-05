@@ -19,7 +19,7 @@ end
 
 codelen(i::UInt32) = 4 - (trailing_zeros(0xff000000 | i) >> 3)
 
-# same as: parse(UInt64, str; base=10), but way faster.
+# same as: parse(UInt64, str; base=10), but more than 2x faster.
 str2uint64(str::String, base::Integer=10) =
     ccall(:strtoul, Culong, (Cstring, Ptr{Cstring}, Cint), str, C_NULL, base)
 
@@ -33,7 +33,7 @@ function addcodepoint!(bytesp::Ptr{UInt8}, bufferp::Ptr{UInt8})
     unsafe_copyto!(pointer(str_buff), bytesp, 4)
     cpoint = convert(UInt32, str2uint64(str_buff, 16))
     chared = reinterpret(UInt32, Char(cpoint))
-    # the follwing ins modified from string
+    # the follwing is modified from substring.jl in base.
     lenc = codelen(chared)
     offs = 1
     x = bswap(chared)
