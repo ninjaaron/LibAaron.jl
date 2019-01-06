@@ -16,6 +16,10 @@ for c in "\"\\/"
     escchars[codepoint(c)] = convert(UInt8, ascii[codepoint(c)])
 end
 
+struct JSONStringError <: Exception
+    var::String
+end
+
 
 codelen(i::UInt32) = 4 - (trailing_zeros(0xff000000 | i) >> 3)
 
@@ -54,12 +58,17 @@ function string_unescape!(str::String, buffer::Vector{UInt8})
         byte = bytes[i]
         if ascii[byte] == '\\'
             byte = bytes[i += 1]
+            byte > 127 && throw(JSONStringError("Invalid escape sequence at byte #$i of input. This looks like unicode higher than ASCII"))
             if ascii[byte] == 'u'
                 bytes_written = addcodepoint!(pointer(bytes, i+=1), pointer(buffer, j))
                 j += bytes_written
                 i += 3
             else
-                buffer[j += 1] = escchars[byte]
+                if (escchar = escchars[byte]) == 0x00
+                    badchar = "\\$(ascii[byte])"
+                    throw(JSONStringError("Invalid escape sequence: $badchar at byte #$i"))
+                end
+                buffer[j += 1] = escchar
             end
         else
             buffer[j += 1] = byte
