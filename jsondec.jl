@@ -27,15 +27,15 @@ end
 codelen(i::UInt32) = 4 - (trailing_zeros(0xff000000 | i) >> 3)
 
 # same as: parse(UInt64, str; base=10), but more than 2x faster.
-const errptr = Ref(pointer(zeros(UInt8, 1)))
+const errptr = Ref(Ptr{UInt8}(0))
 function str2uint64(str::String, base::Integer=10)
     num = ccall(
         :strtoul, Culong,
         (Cstring, Ptr{Ptr{UInt8}}, Cint),
         str, errptr, base
     )
-    unsafe_wrap(Array, errptr.x, 1)[1] != 0 &&
-        error("could not convert $(repr(str)) to base $x")
+    unsafe_load(errptr[]) != 0 &&
+        error("could not convert $(repr(str)) to base $base")
     num
 end
 
@@ -51,11 +51,9 @@ const str_buff = "0000"
     chared = reinterpret(UInt32, Char(cpoint))
     # the follwing is modified from string() in substring.jl in base.
     lenc = codelen(chared)
-    offs = 1
     x = bswap(chared)
     for i in 1:lenc
-        unsafe_store!(bufferp + offs, x % UInt8)
-        offs += 1
+        unsafe_store!(bufferp += 1, x % UInt8)
         x >>= 8
     end
     return lenc
@@ -96,6 +94,7 @@ function main()
     @btime string_unescape!(astring, $buffer)
     println(string_unescape!("\\u00eb", buffer))
     @btime string_unescape!("\\u00eb", $buffer)
+    println(string_unescape!("\\u123x", buffer))
     # println(string_unescape!("\\u1t3x", buffer))
 end
 main()
