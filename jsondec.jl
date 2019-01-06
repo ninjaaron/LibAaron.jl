@@ -6,7 +6,10 @@ const astring = raw"""
 "<datafield xmlns=\\"http://viaf.org/viaf/terms#\\" \n dtype=\\"UNIMARC\\" ind1=\\" \\" ind2=\\" \\" tag=\\"215\\">     <subfield code=\\"7\\">ba0yba0y</subfield> <subfield code=\\"8\\">fre   </subfield>     <subfield code=\\"9\\"> </subfield>     <subfield code=\\"a\\">Djelfa, Wilaya de (Alge\u0301rie)</subfield>   </datafield>"
 """[1:end-1]
 
+# look up ascii characters by byte
 const ascii = [Char(i) for i in 1:127]
+
+# lookup the meanings of control characters by byte
 const controlchars = "bfnrt"
 const escchars = fill(0x00, 127)
 for c in controlchars
@@ -24,8 +27,17 @@ end
 codelen(i::UInt32) = 4 - (trailing_zeros(0xff000000 | i) >> 3)
 
 # same as: parse(UInt64, str; base=10), but more than 2x faster.
-str2uint64(str::String, base::Integer=10) =
-    ccall(:strtoul, Culong, (Cstring, Ptr{Cstring}, Cint), str, C_NULL, base)
+const errptr = Ref(pointer(zeros(UInt8, 1)))
+function str2uint64(str::String, base::Integer=10)
+    num = ccall(
+        :strtoul, Culong,
+        (Cstring, Ptr{Ptr{UInt8}}, Cint),
+        str, errptr, base
+    )
+    unsafe_wrap(Array, errptr.x, 1)[1] != 0 &&
+        error("could not convert $(repr(str)) to base $x")
+    num
+end
 
 # str_buff is not a "constant". This is really a buffer that is
 # manipulated with unsafe_copy! in addcodepoint!. I'm sorry for doing
@@ -82,5 +94,8 @@ function main()
     # @btime JSON.parse(astring)
     buffer = zeros(UInt8, 1000)
     @btime string_unescape!(astring, $buffer)
+    println(string_unescape!("\\u00eb", buffer))
+    @btime string_unescape!("\\u00eb", $buffer)
+    # println(string_unescape!("\\u1t3x", buffer))
 end
 main()
