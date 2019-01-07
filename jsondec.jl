@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 using BenchmarkTools
-# import JSON
+import JSON
 
 const astring = raw"""
 "<datafield xmlns=\\"http://viaf.org/viaf/terms#\\" \n dtype=\\"UNIMARC\\" ind1=\\" \\" ind2=\\" \\" tag=\\"215\\">     <subfield code=\\"7\\">ba0yba0y</subfield> <subfield code=\\"8\\">fre   </subfield>     <subfield code=\\"9\\"> </subfield>     <subfield code=\\"a\\">Djelfa, Wilaya de (Alge\u0301rie)</subfield>   </datafield>"
@@ -22,41 +22,42 @@ end
 struct JSONStringError <: Exception
     var::String
 end
+Base.show(io, err::JSONStringError) = print(io, "JSONStringerror: $(err.var)")
 
 
 codelen(i::UInt32) = 4 - (trailing_zeros(0xff000000 | i) >> 3)
 
 # same as: parse(UInt64, str; base=10), but more than 2x faster.
 const errptr = Ref(Ptr{UInt8}(0))
-function str2uint64(str::String, base::Integer=10)
+function str2uint64(str::Ptr{UInt8}, base::Integer)
     num = ccall(
-        :strtoul, Culong,
-        (Cstring, Ptr{Ptr{UInt8}}, Cint),
+        :strtoull, Culonglong,
+        (Ptr{UInt8}, Ptr{Ptr{UInt8}}, Cint),
         str, errptr, base
     )
-    unsafe_load(errptr[]) != 0 &&
+    unsafe_load(errptr[]) != 0x00 &&
         error("could not convert $(repr(str)) to base $base")
     num
 end
+str2uint64(str::String, base::Integer) = str2uint64(pointer(str), base)
+str2uint64(str) = str2uint64(str, 10)
 
-# str_buff is not a "constant". This is really a buffer that is
-# manipulated with unsafe_copy! in addcodepoint!. I'm sorry for doing
-# this, but it actually makes a huge difference against allocating a
-# new string every time.
-const str_buff = "0000"
+# I'm sorry for using pointers like this, but it actually makes a huge
+# difference vs. allocating a new string every time.
+const str_buff = convert(Ptr{UInt8}, Libc.calloc(5, 1))
 # why use @inbounds when you have pointer arithmetic?
 @inline function addcodepoint!(bytesp::Ptr{UInt8}, bufferp::Ptr{UInt8})
-    unsafe_copyto!(pointer(str_buff), bytesp, 4)
+    unsafe_copyto!(str_buff, bytesp, 4)
     cpoint = convert(UInt32, str2uint64(str_buff, 16))
-    chared = reinterpret(UInt32, Char(cpoint))
     # the follwing is modified from string() in substring.jl in base.
-    lenc = codelen(chared)
+    chared = reinterpret(UInt32, Char(cpoint))
+    len = codelen(chared)
     x = bswap(chared)
-    for i in 1:lenc
+    for i in 1:len
         unsafe_store!(bufferp += 1, x % UInt8)
         x >>= 8
     end
-    return lenc
+    return len
 end
     
 function string_unescape!(str::String, buffer::Vector{UInt8})
@@ -75,7 +76,7 @@ function string_unescape!(str::String, buffer::Vector{UInt8})
                 i += 3
             else
                 if (escchar = escchars[byte]) == 0x00
-                    badchar = "\\$(ascii[byte])"
+                    badchar = "'\\$(ascii[byte])'"
                     throw(JSONStringError("Invalid escape sequence: $badchar at byte #$i"))
                 end
                 buffer[j += 1] = escchar
@@ -91,10 +92,9 @@ end
 function main()
     # @btime JSON.parse(astring)
     buffer = zeros(UInt8, 1000)
-    @btime string_unescape!(astring, $buffer)
-    println(string_unescape!("\\u00eb", buffer))
     @btime string_unescape!("\\u00eb", $buffer)
-    println(string_unescape!("\\u123x", buffer))
-    # println(string_unescape!("\\u1t3x", buffer))
+    @btime string_unescape!(astring, $buffer)
+    @btime JSON.parse(astring)
+    println(string_unescape!("\\u00eb", buffer))
 end
 main()
