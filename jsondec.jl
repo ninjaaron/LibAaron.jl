@@ -1,5 +1,6 @@
 #!/usr/bin/env julia
 using BenchmarkTools
+using InteractiveUtils
 import JSON
 
 const astring = raw"""
@@ -18,6 +19,7 @@ end
 for c in "\"\\/"
     escchars[codepoint(c)] = convert(UInt8, ascii[codepoint(c)])
 end
+const BS = codepoint('\\')
 
 struct JSONStringError <: Exception
     var::String
@@ -48,9 +50,9 @@ const str_buff = convert(Ptr{UInt8}, Libc.calloc(5, 1))
 # why use @inbounds when you have pointer arithmetic?
 @inline function addcodepoint!(bytesp::Ptr{UInt8}, bufferp::Ptr{UInt8})
     unsafe_copyto!(str_buff, bytesp, 4)
-    cpoint = convert(UInt32, str2uint64(str_buff, 16))
+    codepoint = convert(UInt32, str2uint64(str_buff, 16))
     # the follwing is modified from string() in substring.jl in base.
-    chared = reinterpret(UInt32, Char(cpoint))
+    chared = reinterpret(UInt32, Char(codepoint))
     len = codelen(chared)
     x = bswap(chared)
     for i in 1:len
@@ -59,15 +61,15 @@ const str_buff = convert(Ptr{UInt8}, Libc.calloc(5, 1))
     end
     return len
 end
-    
+
 function string_unescape!(str::String, buffer::Vector{UInt8})
-    bytes = Base.CodeUnits(str)
+    bytes = codeunits(str)
     len = length(bytes)
     length(buffer) < len  && throw(BoundsError(buffer, length(bytes)))
-    i::Int = j::Int = 0
+    i = j = 0
     @inbounds while (i += 1) <= len
         byte = bytes[i]
-        if ascii[byte] == '\\'
+        if byte == BS
             byte = bytes[i += 1]
             byte > 127 && throw(JSONStringError("Invalid escape sequence at byte #$i of input. This looks like unicode higher than ASCII"))
             if ascii[byte] == 'u'
@@ -88,7 +90,6 @@ function string_unescape!(str::String, buffer::Vector{UInt8})
     return String(@view buffer[1:j])
 end
 
-
 function main()
     # @btime JSON.parse(astring)
     buffer = zeros(UInt8, 1000)
@@ -97,7 +98,8 @@ function main()
     @btime string_unescape!("\\u00eb\\u0061", $buffer)
     @btime string_unescape!("\\u00eb\\u0061\\u00ef", $buffer)
     @btime string_unescape!(astring, $buffer)
-    @btime JSON.parse(astring)
+    # @btime JSON.parse(astring)
+    index = zeros(UInt64, 1000)
     println(string_unescape!("\\u00eb", buffer))
 end
 main()

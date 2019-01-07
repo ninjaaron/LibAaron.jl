@@ -62,6 +62,37 @@ Base.iterate(f::Flatten) =
 
 # I wanted a uri escape function. The one in URIParser was weird, and
 # the one in GLib is much faster anyway.
+macro ccall(expr)
+    expr.head != :(::) &&
+        error("@ccall needs a function signature with a return type")
+    rettype = expr.args[2]
+
+    call = expr.args[1]
+    call.head != :call &&
+        error("@ccall has to be a function call")
+
+    if (f = call.args[1]) == :.
+        lib = f.args[1]
+        fname = f.args[2]
+        func = esc(:(($fname, $lib)))
+    else
+        func = QuoteNode(f)
+    end
+    argtypes = :(())
+    args = []
+    for arg in call.args[2:end]
+        arg.head != :(::) &&
+            error("args in @ccall must be annotated")
+        push!(args, arg.args[1])
+        push!(argtypes.args, arg.args[2])
+    end
+    output = esc(:(ccall($func, $rettype, $argtypes)))
+    append!(output.args[1].args, args)
+    return output
+end
+        
+
+
 const glib = "libglib-2.0"
 
 function uriescape(str::AbstractString, noescape::Opt{AbstractString}=nothing)
@@ -80,7 +111,10 @@ end
 # how are hard links missing from the Julia standard library?
 function hardlink(oldpath, newpath)
     err = ccall(:link, Cint, (Cstring, Cstring), oldpath, newpath)
-    systemerror("could not link $(repr(oldpath)) to $(repr(newpath))", err != 0)
+    systemerror(
+        "could not link $(repr(oldpath)) to $(repr(newpath))",
+        err != 0
+    )
     newpath
 end
         
