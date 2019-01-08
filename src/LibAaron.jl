@@ -1,5 +1,5 @@
 module LibAaron
-export @forward, flatten, @ccall
+export @forward, flatten, @ccall, @cdef
 const Opt = Union{T,Nothing} where T
 
 # forward methods on a struct to an attribute of that struct
@@ -66,7 +66,19 @@ Base.iterate(f::Flatten) =
     iterate(f, Iterators.Stateful[Iterators.Stateful(f.iterable)])
 
 # make calls to C have julia syntax. examples below.
-macro ccall(expr)
+"""
+`parsecall` is an implementation detail of @ccall and @cdef
+
+takes and expression like :(printf("%d"::Cstring, 10::Cuint)::Cvoid)
+returns: a tuple of (function_name, return_type, arg_types, args
+
+The above input outputs this:
+(:printf, :Cvoid, :((Cstring, Cuint)), ["%d", 10])
+
+Note that the args are in an array and have to be appended to the
+ccall in a separate step.
+"""
+function parse2ccall(expr)
     expr.head != :(::) &&
         error("@ccall needs a function signature with a return type")
     rettype = expr.args[2]
@@ -90,17 +102,48 @@ macro ccall(expr)
         push!(args, arg.args[1])
         push!(argtypes.args, arg.args[2])
     end
+    func, rettype, argtypes, args
+end
+
+"""
+convert a julia-style function definition to a ccall:
+
+`@ccall printf("%d"::Cstring, 10::Cint)::Cvoid`
+
+same as:
+
+`ccall(:printf, Cvoid, (Cstring, Cint), "%d", 10)`
+"""
+macro ccall(expr)
+    func, rettype, argtypes, args = parse2ccall(expr)
     output = :(ccall($func, $rettype, $argtypes))
     append!(output.args, args)
-    return esc(output)
+    esc(output)
 end
-        
 
+"""
+define a _very_ thin wrapper function on a ccall. Mostly for wrapping
+libraries quickly as a foundation for a higher-level interface.
 
-const glib = "libglib-2.0"
+@cdef mkfifo(path::Cstring, mode::Cuint)::Cint
+
+becomes:
+
+mkfifo(path, mode) = ccall(:mkfifo, Cint, (Cstring, Cuint), path, mode)
+"""
+macro cdef(expr)
+    func, rettype, argtypes, args = parse2ccall(expr)
+    call = :(ccall($func, $rettype, $argtypes))
+    append!(call.args, args)
+    name = func isa QuoteNode ? func.value : func.args[1].value
+    definition = :($name())
+    append!(definition.args, args)
+    esc(:($definition = $call))
+end
 
 # I wanted a uri escape function. The one in URIParser was weird, and
 # the one in GLib is much faster anyway.
+const glib = "libglib-2.0"
 function uriescape(uri::AbstractString, noescape::Opt{AbstractString}=nothing)
     noesc = noescape == nothing ? C_NULL : noescape
     cstr = @ccall glib.g_uri_escape_string(
