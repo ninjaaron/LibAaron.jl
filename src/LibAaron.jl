@@ -2,6 +2,11 @@ module LibAaron
 export @forward, flatten, @ccall
 const Opt = Union{T,Nothing} where T
 
+# forward methods on a struct to an attribute of that struct
+# good for your composition.
+# syntax: @forward CompositeType.attr Base.iterate Base.length :*
+# Symbol literals automatically become Base.:symbol. Good for adding
+# methods to built-in types.
 macro forward(attribute, functions...)
     stname = attribute.args[1]
     stattr = attribute.args[2].value
@@ -60,8 +65,7 @@ end
 Base.iterate(f::Flatten) =
     iterate(f, Iterators.Stateful[Iterators.Stateful(f.iterable)])
 
-# I wanted a uri escape function. The one in URIParser was weird, and
-# the one in GLib is much faster anyway.
+# make calls to C have julia syntax. examples below.
 macro ccall(expr)
     expr.head != :(::) &&
         error("@ccall needs a function signature with a return type")
@@ -95,6 +99,8 @@ end
 
 const glib = "libglib-2.0"
 
+# I wanted a uri escape function. The one in URIParser was weird, and
+# the one in GLib is much faster anyway.
 function uriescape(uri::AbstractString, noescape::Opt{AbstractString}=nothing)
     noesc = noescape == nothing ? C_NULL : noescape
     cstr = @ccall glib.g_uri_escape_string(
