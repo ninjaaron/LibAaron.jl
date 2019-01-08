@@ -71,7 +71,7 @@ macro ccall(expr)
     call.head != :call &&
         error("@ccall has to be a function call")
 
-    if (f = call.args[1]).head == :.
+    if (f = call.args[1]) isa Expr
         lib = f.args[1]
         fname = f.args[2]
         func = :(($fname, $lib))
