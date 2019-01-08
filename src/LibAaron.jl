@@ -1,5 +1,5 @@
 module LibAaron
-export @forward, flatten
+export @forward, flatten, @ccall
 const Opt = Union{T,Nothing} where T
 
 macro forward(attribute, functions...)
@@ -71,10 +71,10 @@ macro ccall(expr)
     call.head != :call &&
         error("@ccall has to be a function call")
 
-    if (f = call.args[1]) == :.
+    if (f = call.args[1]).head == :.
         lib = f.args[1]
         fname = f.args[2]
-        func = esc(:(($fname, $lib)))
+        func = :(($fname, $lib))
     else
         func = QuoteNode(f)
     end
@@ -86,23 +86,20 @@ macro ccall(expr)
         push!(args, arg.args[1])
         push!(argtypes.args, arg.args[2])
     end
-    output = esc(:(ccall($func, $rettype, $argtypes)))
-    append!(output.args[1].args, args)
-    return output
+    output = :(ccall($func, $rettype, $argtypes))
+    append!(output.args, args)
+    return esc(output)
 end
         
 
 
 const glib = "libglib-2.0"
 
-function uriescape(str::AbstractString, noescape::Opt{AbstractString}=nothing)
+function uriescape(uri::AbstractString, noescape::Opt{AbstractString}=nothing)
     noesc = noescape == nothing ? C_NULL : noescape
-    cstr = ccall(
-        (:g_uri_escape_string, glib),
-        Cstring,
-        (Cstring, Cstring, Cint),
-        str, noesc, true
-    )
+    cstr = @ccall glib.g_uri_escape_string(
+        uri::Cstring, noesc::Cstring, true::Cint
+    )::Cstring
     out = unsafe_string(cstr)
     ccall(:free, Cvoid, (Cstring,), cstr)
     out
@@ -110,13 +107,19 @@ end
 
 # how are hard links missing from the Julia standard library?
 function hardlink(oldpath, newpath)
-    err = ccall(:link, Cint, (Cstring, Cstring), oldpath, newpath)
+    err = @ccall link(oldpath::Cstring, newpath::Cstring)::Cint
     systemerror(
         "could not link $(repr(oldpath)) to $(repr(newpath))",
         err != 0
-    )
+    )::Cint
     newpath
 end
-        
+
+# and fifos?
+function mkfifo(pathname, mode=0o644)
+    err = @ccall mkfifo(pathname::Cstring, mode::Cuint)::Cint
+    systemerror("couldn't make fifo, $(repr(pathname))", err != 0)
+    pathname
+end
 
 end # module
