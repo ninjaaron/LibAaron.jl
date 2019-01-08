@@ -6,7 +6,7 @@ const Opt = Union{T,Nothing} where T
 # good for your composition.
 # syntax: @forward CompositeType.attr Base.iterate Base.length :*
 # Symbol literals automatically become Base.:symbol. Good for adding
-# methods to built-in types.
+# methods to built-in operators.
 macro forward(attribute, functions...)
     stname = attribute.args[1]
     stattr = attribute.args[2].value
