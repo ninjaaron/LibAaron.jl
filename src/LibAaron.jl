@@ -157,10 +157,7 @@ end
 # how are hard links missing from the Julia standard library?
 function hardlink(oldpath, newpath)
     err = @ccall link(oldpath::Cstring, newpath::Cstring)::Cint
-    systemerror(
-        "could not link $(repr(oldpath)) to $(repr(newpath))",
-        err != 0
-    )::Cint
+    systemerror("linking $oldpath -> $newpath", err != 0)
     newpath
 end
 

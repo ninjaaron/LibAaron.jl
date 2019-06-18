@@ -2,3 +2,5 @@ name = "LibAaron"
 uuid = "9c8a81ba-0db3-11e9-2404-49793f05cf58"
 authors = ["Aaron Christianson <ninjaaron@gmail.com>"]
 version = "0.1.0"
+
+[deps]
