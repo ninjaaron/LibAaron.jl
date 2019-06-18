@@ -1,5 +1,5 @@
 module LibAaron
-export @forward, flatten
+export @forward, flatten, hardlink, mkfifo
 
 import CcallMacros: @cdef, @ccall
 const Opt = Union{T,Nothing} where T
@@ -9,20 +9,24 @@ const Opt = Union{T,Nothing} where T
 # syntax: @forward CompositeType.attr Base.iterate Base.length :*
 # Symbol literals automatically become Base.:symbol. Good for adding
 # methods to built-in operators.
-macro forward(attribute, functions...)
-    stname = attribute.args[1]
-    stattr = attribute.args[2].value
+macro forward(structfield, functions...)
+    structname = structfield.args[1]
+    field = structfield.args[2].value
     block = quote end
     for f in functions
+        # case for operator symbols
         if f isa QuoteNode
             f = :(Base.$(f.value)) 
-            def1 = :($f(x::$stname, y) = $f(x.$stattr, y))
-            def2 = :($f(x, y::$stname) = $f(x, y.$stattr))
+            def1 = :($f(x::$structname, y) = $f(x.$field, y))
+            def2 = :($f(x, y::$structname) = $f(x, y.$field))
             push!(block.args, def1, def2)
+        # normal case
         else
-            def = :($f(x::$stname, args...; kwargs...) = $f(x.$stattr, args...; kwargs...))
+            def = :(
+                $f(x::$structname, args...; kwargs...) = $f(x.$field, args...; kwargs...)
+            )
+            push!(block.args, def)
         end
-        push!(block.args, def)
     end
     esc(block)
 end
