@@ -4,3 +4,4 @@ authors = ["Aaron Christianson <ninjaaron@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+CcallMacros = "708bcaac-1406-11e9-0ec1-63a89b0112ed"
