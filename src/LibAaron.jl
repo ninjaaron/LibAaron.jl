@@ -1,14 +1,15 @@
 module LibAaron
-export @forward, flatten, hardlink, mkfifo
 
 import CcallMacros: @cdef, @ccall
 const Opt = Union{T,Nothing} where T
 
-# forward methods on a struct to an attribute of that struct
-# good for your composition.
-# syntax: @forward CompositeType.attr Base.iterate Base.length :*
-# Symbol literals automatically become Base.:symbol. Good for adding
-# methods to built-in operators.
+"""
+forward methods on a struct to an attribute of that struct
+good for your composition.
+syntax: `@forward CompositeType.attr Base.iterate Base.length :*`
+Symbol literals automatically become Base.:symbol. Good for adding
+methods to built-in operators.
+"""
 macro forward(structfield, functions...)
     structname = structfield.args[1]
     field = structfield.args[2].value
@@ -30,6 +31,20 @@ macro forward(structfield, functions...)
     end
     esc(block)
 end
+
+"""
+Check if you're running as a script. Normally used with `@__FILE__` as the
+argument. Usage:
+
+    isscript(@__FILE__)
+
+Normally, it won't run if the file is loaded interactively. Override with:
+
+    isscript(@__FILE__, run_interactive=true)
+"""
+isscript(file; run_interactive=false) =
+    file == abspath(PROGRAM_FILE) && (run_interactive || !isinteractive())
+
 
 # flatten things. Probably not as fast as the one in the standard
 # library, but more flexible.
