@@ -93,7 +93,7 @@ const glib = "libglib-2.0"
 @cdef glib.g_uri_escape_string(uri::Cstring, noesc::Cstring, utf8::Cint)::Cstring
 
 function uriescape(uri, allowed_chars=C_NULL; allow_utf8=false)
-    cstr = g_uri_esape_string(uri, allowed_chars, allow_utf8)
+    cstr = g_uri_escape_string(uri, allowed_chars, allow_utf8)
     out = unsafe_string(cstr)
     ccall(:free, Cvoid, (Cstring,), cstr)
     out
