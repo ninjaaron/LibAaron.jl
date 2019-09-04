@@ -34,7 +34,7 @@ const errptr = Ref(Ptr{UInt8}(0))
 function str2uint64(str::Ptr{UInt8}, base::Integer)
     num = ccall(
         :strtoull, Culonglong,
-        (Ptr{UInt8}, Ptr{Ptr{UInt8}}, Cint),
+        (Ptr{UInt8}, Ref{Ptr{UInt8}}, Cint),
         str, errptr, base
     )
     unsafe_load(errptr[]) != 0x00 &&

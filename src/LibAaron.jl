@@ -3,28 +3,48 @@ module LibAaron
 import CcallMacros: @cdef, @ccall
 const Opt = Union{T,Nothing} where T
 
-# forward methods on a struct to an attribute of that struct
-# good for your composition.
-# syntax: @forward CompositeType.attr Base.iterate Base.length :*
-# Symbol literals automatically become Base.:symbol. Good for adding
-# methods to built-in operators.
-macro forward(attribute, functions...)
-    stname = attribute.args[1]
-    stattr = attribute.args[2].value
+"""
+forward methods on a struct to an attribute of that struct
+good for your composition.
+syntax: `@forward CompositeType.attr Base.iterate Base.length :*`
+Symbol literals automatically become Base.:symbol. Good for adding
+methods to built-in operators.
+"""
+macro forward(structfield, functions...)
+    structname = structfield.args[1]
+    field = structfield.args[2].value
     block = quote end
     for f in functions
+        # case for operator symbols
         if f isa QuoteNode
             f = :(Base.$(f.value)) 
-            def1 = :($f(x::$stname, y) = $f(x.$stattr, y))
-            def2 = :($f(x, y::$stname) = $f(x, y.$stattr))
+            def1 = :($f(x::$structname, y) = $f(x.$field, y))
+            def2 = :($f(x, y::$structname) = $f(x, y.$field))
             push!(block.args, def1, def2)
+        # normal case
         else
-            def = :($f(x::$stname, args...; kwargs...) = $f(x.$stattr, args...; kwargs...))
+            def = :(
+                $f(x::$structname, args...; kwargs...) = $f(x.$field, args...; kwargs...)
+            )
+            push!(block.args, def)
         end
-        push!(block.args, def)
     end
     esc(block)
 end
+
+"""
+Check if you're running as a script. Normally used with `@__FILE__` as the
+argument. Usage:
+
+    isscript(@__FILE__)
+
+Normally, it won't run if the file is loaded interactively. Override with:
+
+    isscript(@__FILE__, run_interactive=true)
+"""
+isscript(file; run_interactive=false) =
+    file == abspath(PROGRAM_FILE) && (run_interactive || !isinteractive())
+
 
 # flatten things. Probably not as fast as the one in the standard
 # library, but more flexible.
@@ -114,7 +134,7 @@ end
 # how are hard links missing from the Julia standard library?
 function hardlink(oldpath, newpath)
     err = @ccall link(oldpath::Cstring, newpath::Cstring)::Cint
-    systemerror("linking $(repr(oldpath)) to $(repr(newpath))", err != 0)
+    systemerror("linking $oldpath -> $newpath", err != 0)
     newpath
 end
 
