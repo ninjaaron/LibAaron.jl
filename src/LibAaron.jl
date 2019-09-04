@@ -1,5 +1,4 @@
 module LibAaron
-export @forward, flatten
 
 import CcallMacros: @cdef, @ccall
 const Opt = Union{T,Nothing} where T
@@ -64,19 +63,51 @@ function Base.iterate(f::Flatten, stack)
     nothing
 end
 
+
 Base.iterate(f::Flatten) =
     iterate(f, Iterators.Stateful[Iterators.Stateful(f.iterable)])
+
+# use a process as a filter
+function procwrite!(proc, str::Union{AbstractVector{UInt8}, AbstractString})
+    write(proc, str)
+    close(proc.in)
+end
+
+function procwrite!(proc, lines)
+    for line in lines
+        write(proc, line, '\n')
+    end
+    close(proc.in)
+end
+
+function openfilter(fn::Function, cmd::Base.AbstractCmd, input)
+    proc = open(cmd, read=true, write=true)
+    writer = @async procwrite!(proc, input)
+    reader = @async fn(proc)
+    try
+        wait(writer)
+        return fetch(reader)
+    finally
+        close(proc)
+    end
+end
+
+function openfilter(cmd::Base.AbstractCmd, input)
+    proc = open(cmd, read=true, write=true)
+    writer = @async procwrite!(proc, input)
+    proc
+end
 
 # I wanted a uri escape function. The one in URIParser was weird, and
 # the one in GLib is much faster anyway.
 const glib = "libglib-2.0"
 
-@cdef glib.g_uri_escape_string(uri::Cstring, noesc::Cstring, utf8::Cint)::Cstring
-
 function uriescape(uri, allowed_chars=C_NULL; allow_utf8=false)
-    cstr = g_uri_esape_string(uri, allowed_chars, allow_utf8)
+    cstr = @ccall glib.g_uri_escape_string(
+        uri::Cstring, allow_chars::Cstring, allow_utf8::Cint
+    )::Cstring
     out = unsafe_string(cstr)
-    ccall(:free, Cvoid, (Cstring,), cstr)
+    @ccall free(cstr::Cstring)::Cvoid
     out
 end
 
