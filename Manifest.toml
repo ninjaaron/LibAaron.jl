@@ -1,8 +1,2 @@
 # This file is machine-generated - editing it directly is not advised
 
-[[CcallMacros]]
-git-tree-sha1 = "9b40efbfe91f3f8bd0e67932d2fb97a5c31b080e"
-repo-rev = "master"
-repo-url = "https://github.com/ninjaaron/CcallMacros.jl"
-uuid = "708bcaac-1406-11e9-0ec1-63a89b0112ed"
-version = "0.1.1"

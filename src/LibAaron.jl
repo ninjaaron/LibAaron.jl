@@ -1,6 +1,5 @@
 module LibAaron
 
-import CcallMacros: @cdef, @ccall
 const Opt = Union{T,Nothing} where T
 
 """
@@ -88,29 +87,36 @@ Base.iterate(f::Flatten) =
 
 # I wanted a uri escape function. The one in URIParser was weird, and
 # the one in GLib is much faster anyway.
-const glib = "libglib-2.0"
+getlib(start) = filter(split.(readlines(`ldconfig -p`))) do fields
+    startswith(fields[1], start)
+end[1][1]
 
-@cdef glib.g_uri_escape_string(uri::Cstring, noesc::Cstring, utf8::Cint)::Cstring
+const glib = getlib("libglib-2.0")
 
 function uriescape(uri, allowed_chars=C_NULL; allow_utf8=false)
-    cstr = g_uri_escape_string(uri, allowed_chars, allow_utf8)
+    cstr = ccall(
+        (:g_uri_escape_string, glib),
+        Cstring,
+        (Cstring, Cstring, Cint),
+        uri, allowed_chars, allow_utf8
+    )
     out = unsafe_string(cstr)
     ccall(:free, Cvoid, (Cstring,), cstr)
     out
 end
 
 # how are hard links missing from the Julia standard library?
-function hardlink(oldpath, newpath)
-    err = @ccall link(oldpath::Cstring, newpath::Cstring)::Cint
+function hardlink(oldpath::S, newpath::S) where S <: AbstractString
+    err = ccall(:link, Cint, (Cstring, Cstring), oldpath, newpath)
     systemerror("linking $oldpath -> $newpath", err != 0)
     newpath
 end
 
 # and fifos?
 function mkfifo(pathname, mode=0o644)
-    err = @ccall mkfifo(pathname::Cstring, mode::Cuint)::Cint
+    err = ccall(:mkfifo, Cint, (Cstring, Cuint), pathname, mode)
     systemerror("couldn't make fifo, $(repr(pathname))", err != 0)
     pathname
 end
 
-end # module
+end # LibAaron module
