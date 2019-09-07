@@ -140,9 +140,9 @@ end
 
 # and fifos?
 function mkfifo(pathname, mode=0o644)
-    err = @ccall mkfifo(pathname::Cstring, mode::Cuint)::Cint
+    err = ccall(:mkfifo, Cint, (Cstring, Cuint), pathname, mode)
     systemerror("couldn't make fifo, $(repr(pathname))", err != 0)
     pathname
 end
 
-end # module
+end # LibAaron module
