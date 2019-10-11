@@ -1,6 +1,6 @@
 module LibAaron
 
-const Opt = Union{T,Nothing} where T
+Opt{T} = Union{T,Nothing}
 
 """
 forward methods on a struct to an attribute of that struct
@@ -44,6 +44,71 @@ Normally, it won't run if the file is loaded interactively. Override with:
 isscript(file; run_interactive=false) =
     file == abspath(PROGRAM_FILE) && (run_interactive || !isinteractive())
 
+"""
+    update_env(source_file, command)
+
+Many programming languages (including but not limited to Python) provide
+scripts which modif the shell's environment for deveopment purposes.
+Such modifications may include modifying `\$PATH` and many other tweaks.
+
+Because these scripts are generally meant for execution in a shell, it
+can be difficult to use them inside a program. `update_env` works
+around this executing the appropriate commands in a `bash` shell, then
+running `env` from that shell, and parsing the output into the
+environment of the running Julia program.
+
+- `source_file`: should be the file that contains the defintions to be
+  made available to the shell. In the case of a Python virtualenv, it
+  would be something like `venv/bin/activate`. Use an empty string,
+  `""`, if no file is to be sourced. This is for cases like ocaml, where
+  the command is something like `eval \$(opam env)`. In the case of
+  `conda`, it may be a file which is normally sourced in .bashrc,
+  .bash_profile or similar.
+- `command`: the command to run once the file is sourced (probably a
+  shell function defined therein). This may also be an empty string if
+  no command is required.
+
+Note that the `command` argument may be a `Cmd` instance or an instance
+of `AbstractString`. If an `AbstractString` is given, the command will be
+handed directly to the shell to exectute and could create an injection
+vulnerability if input is not validated. Using a `Cmd` instance will
+properly escape the command, but will make certain things impossible;
+e.g. `eval \$(opam env)` will not work because it relies on shell
+operators. Also note that operator shared between Julia strings and
+the shell, like `\$` or `\$()` must be properly escaped in order to reach
+the shell--with `raw""` or backslashes.
+"""
+function update_env(source_file::AbstractString, command::AbstractString)
+    source_file = Base.shell_escape(source_file)
+    script = if source_file == ""
+        """
+        $command
+        env --null
+        """
+    else
+        """
+        source $source_file
+        $command
+        env --null
+        """
+    end
+    proc = open(`sh`, write=true, read=true)
+    reader = @async split(read(proc, String), '\0')
+    close(proc)
+
+    foreach(fetch(reader)) do line
+        if '=' in line
+            (key, value) = split(line, "="; limit=2)
+            ENV[key] = value
+        end
+    end
+end
+
+# safe version
+update_env(source_file::AbstractString, command::Cmd) =
+    let command = join(Base.shell_escape.(command.exec), " ")
+        update_env(source_file, command)
+    end
 
 # flatten things. Probably not as fast as the one in the standard
 # library, but more flexible.
@@ -91,32 +156,94 @@ getlib(start) = filter(split.(readlines(`ldconfig -p`))) do fields
     startswith(fields[1], start)
 end[1][1]
 
-const glib = getlib("libglib-2.0")
-
-function uriescape(uri, allowed_chars=C_NULL; allow_utf8=false)
-    cstr = ccall(
-        (:g_uri_escape_string, glib),
-        Cstring,
-        (Cstring, Cstring, Cint),
-        uri, allowed_chars, allow_utf8
-    )
-    out = unsafe_string(cstr)
-    ccall(:free, Cvoid, (Cstring,), cstr)
-    out
+function geturiescape()
+    glib::String = getlib("libglib-2.0")
+    return function(uri, allowed_chars=C_NULL; allow_utf8=false)
+        cstr = ccall(
+            (:g_uri_escape_string, glib),
+            Cstring,
+            (Cstring, Cstring, Cint),
+            uri, allowed_chars, allow_utf8
+        )
+        out = unsafe_string(cstr)
+        ccall(:free, Cvoid, (Cstring,), cstr)
+        out
+    end
 end
 
 # how are hard links missing from the Julia standard library?
-function hardlink(oldpath::S, newpath::S) where S <: AbstractString
+function hardlink(oldpath::AbstractString, newpath::AbstractString)
     err = ccall(:link, Cint, (Cstring, Cstring), oldpath, newpath)
     systemerror("linking $oldpath -> $newpath", err != 0)
     newpath
 end
 
 # and fifos?
-function mkfifo(pathname, mode=0o644)
+function mkfifo(pathname::AbstractString, mode=0o644)
     err = ccall(:mkfifo, Cint, (Cstring, Cuint), pathname, mode)
     systemerror("couldn't make fifo, $(repr(pathname))", err != 0)
     pathname
+end
+
+struct ExportName
+    name::Symbol
+    isconst::Bool
+end
+geteq(sym::Symbol) = ExportName(sym, false)
+geteq(expr::Expr) =
+    expr.head == :call ? ExportName(expr.args[1], true) : nothing
+
+getexport(expr) = if Meta.isexpr(expr, :(=))
+    geteq(expr.args[1])
+elseif Meta.isexpr(expr, :function)
+    ExportName(expr.args[1].args[1], true)
+elseif Meta.isexpr(expr, :module)
+    ExportName(expr.args[2], true)
+elseif Meta.isexpr(expr, :struct)
+    ExportName(expr.args[2], true)
+elseif Meta.isexpr(expr, :const)
+    ExportName(getexport(expr.args[1]).name, true)
+else
+    nothing
+end
+
+mkassignment(mod, name, isconst) =
+    isconst ? :(const $name = $mod.$name) : :($name = $mod.$name)
+    
+
+function use_this(mod, expr; noconst=false)
+    dummyname = gensym(:DummyModule)
+    exports, exprs = if Meta.isexpr(expr, :block)
+        getexport.(expr.args), expr.args
+    else
+        [getexport(expr)], [expr]
+    end
+    assign = if noconst
+        e->mkassignment(dummyname, e.name, false)
+    else
+        e->mkassignment(dummyname, e.name, e.isconst)
+    end
+    exported = map(assign, filter(!isnothing, exports))
+    usemod = :(using $mod)
+    outmod = quote
+        module $dummyname
+        $usemod
+        $(exprs...)
+        end
+    end
+
+    return quote
+        @eval $(outmod.args[2])
+        $(exported...)
+    end
+end
+
+macro use(mod, expr)
+    esc(use_this(mod, expr))
+end
+
+macro use_local(mod, expr)
+    esc(use_this(mod, expr; noconst=true))
 end
 
 end # LibAaron module
