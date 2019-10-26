@@ -1,7 +1,5 @@
 module LibAaron
 
-Opt{T} = Union{T,Nothing}
-
 """
 forward methods on a struct to an attribute of that struct
 good for your composition.
@@ -16,7 +14,7 @@ macro forward(structfield, functions...)
     for f in functions
         # case for operator symbols
         if f isa QuoteNode
-            f = :(Base.$(f.value)) 
+            f = :(Base.$(f.value))
             def1 = :($f(x::$structname, y) = $f(x.$field, y))
             def2 = :($f(x, y::$structname) = $f(x, y.$field))
             push!(block.args, def1, def2)
@@ -41,8 +39,9 @@ Normally, it won't run if the file is loaded interactively. Override with:
 
     isscript(@__FILE__, run_interactive=true)
 """
-isscript(file; run_interactive=false) =
-    file == abspath(PROGRAM_FILE) && (run_interactive || !isinteractive())
+macro isscript()
+    esc(:( @eval @__FILE__ == abspath(PROGRAM_FILE) && !isinteractive() ))
+end
 
 """
     update_env(source_file, command)
@@ -244,7 +243,7 @@ end
 
 mkassignment(mod, name, isconst) =
     isconst ? :(const $name = $mod.$name) : :($name = $mod.$name)
-    
+
 
 function use_this(mod, expr; noconst=false)
     dummyname = gensym(:DummyModule)
