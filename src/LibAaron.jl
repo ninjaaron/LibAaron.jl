@@ -40,7 +40,7 @@ Normally, it won't run if the file is loaded interactively. Override with:
     isscript(@__FILE__, run_interactive=true)
 """
 macro isscript()
-    esc(:( @eval (@__FILE__) == abspath(PROGRAM_FILE) && !isinteractive() ))
+    esc(:( eval(:( (@__FILE__) == abspath(PROGRAM_FILE) && !isinteractive() )) ))
 end
 
 """
