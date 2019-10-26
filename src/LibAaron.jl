@@ -225,18 +225,21 @@ geteq(sym::Symbol) = ExportName(sym, false)
 geteq(expr::Expr) =
     expr.head == :call ? ExportName(expr.args[1], true) : nothing
 
-getexport(expr) = if Meta.isexpr(expr, :(=))
-    geteq(expr.args[1])
-elseif Meta.isexpr(expr, :function)
-    ExportName(expr.args[1].args[1], true)
-elseif Meta.isexpr(expr, :module)
-    ExportName(expr.args[2], true)
-elseif Meta.isexpr(expr, :struct)
-    ExportName(expr.args[2], true)
-elseif Meta.isexpr(expr, :const)
-    ExportName(getexport(expr.args[1]).name, true)
-else
-    nothing
+function getexports(expr, acc=[])
+    if Meta.isexpr(expr, :block)
+        foreach((e)->getexports(e, acc), expr.args)
+    elseif Meta.isexpr(expr, :(=))
+        push!(geteq(expr.args[1]))
+    elseif Meta.isexpr(expr, :function)
+        push!(ExportName(expr.args[1].args[1], true))
+    elseif Meta.isexpr(expr, :module)
+        push!(ExportName(expr.args[2], true))
+    elseif Meta.isexpr(expr, :struct)
+        push!(ExportName(expr.args[2], true))
+    elseif Meta.isexpr(expr, :const)
+        push!(ExportName(getexport(expr.args[1]).name, true))
+    end
+    return acc
 end
 
 mkassignment(mod, name, isconst) =
@@ -245,11 +248,8 @@ mkassignment(mod, name, isconst) =
 
 function use_this(mod, expr; noconst=false)
     dummyname = gensym(:DummyModule)
-    exports, exprs = if Meta.isexpr(expr, :block)
-        getexport.(expr.args), expr.args
-    else
-        [getexport(expr)], [expr]
-    end
+    exports = getexports(expr)
+    exprs = Meta.isexpr(expr, :block) ? expr.args : [expr]
     assign = if noconst
         e->mkassignment(dummyname, e.name, false)
     else
