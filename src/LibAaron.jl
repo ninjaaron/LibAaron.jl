@@ -34,14 +34,8 @@ Check if you're running as a script. Normally used with `@__FILE__` as the
 argument. Usage:
 
     isscript(@__FILE__)
-
-Normally, it won't run if the file is loaded interactively. Override with:
-
-    isscript(@__FILE__, run_interactive=true)
 """
-macro isscript()
-    esc(:( eval(:( abspath(PROGRAM_FILE) == @__FILE__ )) ))
-end
+isscript(__FILE__) = abspath(PROGRAM_FILE) == @__FILE__
 
 """
     update_env(source_file, command)
